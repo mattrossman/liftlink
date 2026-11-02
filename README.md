@@ -6,6 +6,8 @@ When you're gathering context for an agent or sharing sources with someone, copy
 
 LiftLink is a small Mac app that lets you hold **Control + Option** and click a link to copy its address. A toast confirms what you copied, and the menu bar lets you change the shortcut and sound.
 
+<img width="318" alt="LiftLink toast confirming a copied link" src="https://github.com/user-attachments/assets/d0ead221-3c44-4104-b6cf-0a9e6df03166" />
+
 ## Getting started
 
 LiftLink is in early development. Download a [pre-release](https://github.com/mattrossman/liftlink/releases), unzip it, and move LiftLink to Applications. It requires macOS 13 or later on Apple Silicon.
