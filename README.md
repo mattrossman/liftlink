@@ -1,8 +1,8 @@
 # Link Copier
 
-A macOS menu bar prototype. Control + Option + click attempts to copy the link under the pointer. The menu bar reports success or failure. The modified click is consumed even when no link is found; ordinary clicks pass through.
+A macOS menu bar prototype. Hold the configured modifier keys and click to copy the link under the pointer. The default is Control + Option. Configure the shortcut and login behavior from the menu bar settings. The menu bar reports success or failure. The modified click is consumed even when no link is found; ordinary clicks pass through.
 
-Build with the macOS Command Line Tools and a code-signing identity named `Link Copier Local Development` in the login keychain. The identity is local to this Mac and is not included in the repository:
+Quit Link Copier before rebuilding so reopening it runs the new build. Build with the macOS Command Line Tools and a code-signing identity named `Link Copier Local Development` in the login keychain. The identity is local to this Mac and is not included in the repository:
 
 ```sh
 ./build.sh
