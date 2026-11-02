@@ -65,12 +65,14 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
     private var swallowedDown = false
     private var messageClear: DispatchWorkItem?
     private var settingsWindow: NSWindow?
+    private var toastWindow: NSPanel?
+    private var toastDismiss: DispatchWorkItem?
     private var shortcutButton: ShortcutRecorder?
     private var loginButton: NSButton?
     private var loginStatus: NSTextField?
     private var shortcutItem: NSMenuItem?
     private var soundMenu: NSPopUpButton?
-    private var soundName: String { UserDefaults.standard.string(forKey: "sound") ?? "Glass" }
+    private var soundName: String { UserDefaults.standard.string(forKey: "sound") ?? "Frog" }
     private var modifiers: CGEventFlags {
         guard UserDefaults.standard.object(forKey: "modifiers") != nil else { return defaultModifiers }
         return CGEventFlags(rawValue: UInt64(UserDefaults.standard.integer(forKey: "modifiers")))
@@ -135,6 +137,7 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(url, forType: .string)
                     self.show("Link copied")
+                    self.showToast()
                     self.playSound()
                 } else {
                     self.show("No link found")
@@ -175,7 +178,7 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         if settingsWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 335), styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "Link Copier Settings"
             window.isReleasedWhenClosed = false
             let stack = NSStackView()
@@ -220,6 +223,10 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
             let status = NSTextField(wrappingLabelWithString: "")
             loginStatus = status
             stack.addArrangedSubview(status)
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+            let versionLabel = NSTextField(labelWithString: "Version \(version)")
+            versionLabel.textColor = .secondaryLabelColor
+            stack.addArrangedSubview(versionLabel)
             window.center()
             settingsWindow = window
         }
@@ -259,6 +266,41 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
             refreshLoginStatus()
             loginStatus?.stringValue = "Could not update login item: \(error.localizedDescription)"
         }
+    }
+
+    private func showToast() {
+        if toastWindow == nil {
+            let label = NSTextField(labelWithString: "✓ Link copied")
+            label.font = .systemFont(ofSize: 14, weight: .medium)
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: ceil(label.fittingSize.width) + 32, height: 36), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = true
+            panel.level = .floating
+            panel.ignoresMouseEvents = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            let view = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.95).cgColor
+            view.layer?.cornerRadius = 10
+            label.alignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            ])
+            panel.contentView = view
+            toastWindow = panel
+        }
+        guard let panel = toastWindow, let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else { return }
+        let bounds = screen.visibleFrame
+        panel.setFrameOrigin(NSPoint(x: bounds.maxX - panel.frame.width - 24, y: bounds.minY + 24))
+        panel.orderFrontRegardless()
+        toastDismiss?.cancel()
+        let dismiss = DispatchWorkItem { [weak panel] in panel?.orderOut(nil) }
+        toastDismiss = dismiss
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: dismiss)
     }
 
     private func show(_ message: String) {
