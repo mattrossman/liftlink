@@ -10,13 +10,6 @@ private let modifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskCom
 private let defaultModifiers: CGEventFlags = [.maskControl, .maskAlternate]
 private let soundOptions = ["None", "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"]
 
-private func destinationLabel(_ value: String) -> String {
-    guard let url = URLComponents(string: value) else { return "Link" }
-    if let host = url.host, !host.isEmpty { return host }
-    if let scheme = url.scheme { return "\(scheme) link" }
-    return "Link"
-}
-
 private func shortcutLabel(_ flags: CGEventFlags) -> String {
     let names = modifierOptions.filter { flags.contains($0.1) }.map { $0.0 }
     return names.joined(separator: " + ")
@@ -283,7 +276,7 @@ final class LiftLink: NSObject, NSApplicationDelegate {
         if toastWindow == nil {
             let label = NSTextField(labelWithString: message)
             label.font = .systemFont(ofSize: 14, weight: .medium)
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 256, height: 56), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = true
@@ -304,19 +297,23 @@ final class LiftLink: NSObject, NSApplicationDelegate {
             detailLabel.textColor = .secondaryLabelColor
             detailLabel.lineBreakMode = .byTruncatingMiddle
             detailLabel.maximumNumberOfLines = 1
+            detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let text = NSStackView(views: [label, detailLabel])
             text.orientation = .vertical
             text.alignment = .leading
             text.spacing = 2
+            text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let content = NSStackView(views: [icon, text])
             content.orientation = .horizontal
             content.alignment = .centerY
             content.spacing = 10
+            content.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             content.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(content)
             NSLayoutConstraint.activate([
                 icon.widthAnchor.constraint(equalToConstant: 18),
                 icon.heightAnchor.constraint(equalToConstant: 18),
+                detailLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
                 content.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
                 content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
                 content.centerYAnchor.constraint(equalTo: view.centerYAnchor),

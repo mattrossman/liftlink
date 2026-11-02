@@ -31,6 +31,9 @@ jobs:
       - name: Check version selection
         run: sh tests/next-version.sh
 
+      - name: Check link previews
+        run: sh tests/link-preview.sh
+
       - name: Choose the next version
         id: version
         run: |
