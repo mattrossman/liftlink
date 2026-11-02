@@ -1,12 +1,18 @@
-# Link Copier
+# LiftLink
 
-A macOS menu bar prototype. Hold the configured modifier keys and click to copy the link under the pointer. The default is Control + Option. Configure the shortcut and login behavior from the menu bar settings. The menu bar reports success or failure. The modified click is consumed even when no link is found; ordinary clicks pass through.
+Copy a link with a click.
 
-Quit Link Copier before rebuilding so reopening it runs the new build. Build with the macOS Command Line Tools and a code-signing identity named `Link Copier Local Development` in the login keychain. The identity is local to this Mac and is not included in the repository:
+Hold **Control + Option** and click a link to copy its address. Change the shortcut and sound, or start LiftLink at login, from the menu bar.
+
+## Get started
+
+Requires macOS 13 or later and the macOS Command Line Tools.
 
 ```sh
 ./build.sh
-open build/LinkCopier.app
+open build/LiftLink.app
 ```
 
-Grant Link Copier Accessibility permission in System Settings, then quit and reopen the app. Some apps do not expose link destinations through Accessibility. The clipboard is unchanged if a URL cannot be found.
+Allow LiftLink to control your computer in **System Settings → Privacy & Security → Accessibility**, then reopen the app. Some apps don't expose link destinations. LiftLink intercepts the click even when it can't copy the link, and leaves the clipboard unchanged.
+
+Quit LiftLink before rebuilding to run the new build. Without a signing identity, builds use ad hoc signing. Set `LIFTLINK_SIGNING_IDENTITY` to use a stable signing identity; otherwise, macOS may ask for Accessibility access again after a rebuild.

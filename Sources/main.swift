@@ -10,6 +10,13 @@ private let modifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskCom
 private let defaultModifiers: CGEventFlags = [.maskControl, .maskAlternate]
 private let soundOptions = ["None", "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"]
 
+private func destinationLabel(_ value: String) -> String {
+    guard let url = URLComponents(string: value) else { return "Link" }
+    if let host = url.host, !host.isEmpty { return host }
+    if let scheme = url.scheme { return "\(scheme) link" }
+    return "Link"
+}
+
 private func shortcutLabel(_ flags: CGEventFlags) -> String {
     let names = modifierOptions.filter { flags.contains($0.1) }.map { $0.0 }
     return names.joined(separator: " + ")
@@ -59,13 +66,16 @@ final class ShortcutRecorder: NSButton {
     }
 }
 
-final class LinkCopier: NSObject, NSApplicationDelegate {
+final class LiftLink: NSObject, NSApplicationDelegate {
     private var status: NSStatusItem!
     private var tap: CFMachPort?
     private var swallowedDown = false
     private var messageClear: DispatchWorkItem?
     private var settingsWindow: NSWindow?
     private var toastWindow: NSPanel?
+    private var toastLabel: NSTextField?
+    private var toastDetail: NSTextField?
+    private var toastIcon: NSImageView?
     private var toastDismiss: DispatchWorkItem?
     private var shortcutButton: ShortcutRecorder?
     private var loginButton: NSButton?
@@ -80,30 +90,30 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        status.button?.image = NSImage(systemSymbolName: "link", accessibilityDescription: "Link Copier")
+        status.button?.image = NSImage(systemSymbolName: "link", accessibilityDescription: "LiftLink")
         let menu = NSMenu()
         shortcutItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         menu.addItem(shortcutItem!)
         updateShortcutTitle()
         menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Link Copier", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit LiftLink", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         status.menu = menu
 
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         guard AXIsProcessTrustedWithOptions(options) else {
             status.button?.title = "  Accessibility required"
-            menu.insertItem(NSMenuItem(title: "Enable Accessibility, then restart Link Copier", action: nil, keyEquivalent: ""), at: 0)
+            menu.insertItem(NSMenuItem(title: "Enable Accessibility, then restart LiftLink", action: nil, keyEquivalent: ""), at: 0)
             return
         }
         let mask = (1 << CGEventType.leftMouseDown.rawValue) | (1 << CGEventType.leftMouseUp.rawValue)
         tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: CGEventMask(mask), callback: { _, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
-            return Unmanaged<LinkCopier>.fromOpaque(refcon).takeUnretainedValue().handle(type, event)
+            return Unmanaged<LiftLink>.fromOpaque(refcon).takeUnretainedValue().handle(type, event)
         }, userInfo: Unmanaged.passUnretained(self).toOpaque())
         guard let tap else {
             status.button?.title = "  Click monitor unavailable"
-            menu.insertItem(NSMenuItem(title: "Quit and reopen Link Copier", action: nil, keyEquivalent: ""), at: 0)
+            menu.insertItem(NSMenuItem(title: "Quit and reopen LiftLink", action: nil, keyEquivalent: ""), at: 0)
             return
         }
         CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0), .commonModes)
@@ -137,10 +147,11 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(url, forType: .string)
                     self.show("Link copied")
-                    self.showToast()
+                    self.showToast("Link copied", success: true, detail: destinationLabel(url))
                     self.playSound()
                 } else {
                     self.show("No link found")
+                    self.showToast("No link found", success: false, detail: "Clipboard unchanged")
                     NSSound.beep()
                 }
             }
@@ -179,7 +190,7 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
     @objc private func openSettings() {
         if settingsWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 335), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "Link Copier Settings"
+            window.title = "LiftLink Settings"
             window.isReleasedWhenClosed = false
             let stack = NSStackView()
             stack.orientation = .vertical
@@ -251,7 +262,7 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
     private func refreshLoginStatus() {
         let state = SMAppService.mainApp.status
         loginButton?.state = (state == .enabled || state == .requiresApproval) ? .on : .off
-        loginStatus?.stringValue = state == .requiresApproval ? "Allow Link Copier in System Settings > General > Login Items." : ""
+        loginStatus?.stringValue = state == .requiresApproval ? "Allow LiftLink in System Settings > General > Login Items." : ""
     }
 
     @objc private func changeLogin() {
@@ -268,32 +279,59 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showToast() {
+    private func showToast(_ message: String, success: Bool, detail: String) {
         if toastWindow == nil {
-            let label = NSTextField(labelWithString: "✓ Link copied")
+            let label = NSTextField(labelWithString: message)
             label.font = .systemFont(ofSize: 14, weight: .medium)
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: ceil(label.fittingSize.width) + 32, height: 36), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 256, height: 56), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = true
             panel.level = .floating
             panel.ignoresMouseEvents = true
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            let view = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
+            let view = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
+            view.material = .popover
+            view.blendingMode = .behindWindow
+            view.state = .active
             view.wantsLayer = true
-            view.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.95).cgColor
-            view.layer?.cornerRadius = 10
-            label.alignment = .center
-            label.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(label)
+            view.layer?.cornerRadius = 12
+            view.layer?.masksToBounds = true
+            let icon = NSImageView()
+            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+            let detailLabel = NSTextField(labelWithString: "")
+            detailLabel.font = .systemFont(ofSize: 12)
+            detailLabel.textColor = .secondaryLabelColor
+            detailLabel.lineBreakMode = .byTruncatingMiddle
+            detailLabel.maximumNumberOfLines = 1
+            let text = NSStackView(views: [label, detailLabel])
+            text.orientation = .vertical
+            text.alignment = .leading
+            text.spacing = 2
+            let content = NSStackView(views: [icon, text])
+            content.orientation = .horizontal
+            content.alignment = .centerY
+            content.spacing = 10
+            content.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(content)
             NSLayoutConstraint.activate([
-                label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 18),
+                icon.heightAnchor.constraint(equalToConstant: 18),
+                content.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                content.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             ])
             panel.contentView = view
+            toastLabel = label
+            toastDetail = detailLabel
+            toastIcon = icon
             toastWindow = panel
         }
-        guard let panel = toastWindow, let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else { return }
+        guard let panel = toastWindow, let label = toastLabel, let detailLabel = toastDetail, let icon = toastIcon, let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else { return }
+        label.stringValue = message
+        detailLabel.stringValue = detail
+        icon.image = NSImage(systemSymbolName: success ? "checkmark.circle.fill" : "xmark.circle.fill", accessibilityDescription: success ? "Success" : "Failure")
+        icon.contentTintColor = success ? .systemGreen : .systemRed
         let bounds = screen.visibleFrame
         panel.setFrameOrigin(NSPoint(x: bounds.maxX - panel.frame.width - 24, y: bounds.minY + 24))
         panel.orderFrontRegardless()
@@ -313,6 +351,6 @@ final class LinkCopier: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-let delegate = LinkCopier()
+let delegate = LiftLink()
 app.delegate = delegate
 app.run()
