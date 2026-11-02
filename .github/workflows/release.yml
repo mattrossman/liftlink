@@ -1,0 +1,87 @@
+name: Release preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: liftlink-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo '::error::Run this workflow on main.'
+          exit 1
+
+      - name: Check out the selected commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version selection
+        run: sh tests/next-version.sh
+
+      - name: Choose the next version
+        id: version
+        run: |
+          version=$(git tag --list 'v0.0.*' | sh scripts/next-version.sh)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and package LiftLink
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          test "$(uname -m)" = arm64
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION##*.}" Info.plist
+          LIFTLINK_SIGNING_IDENTITY=- ./build.sh
+          codesign --verify --strict --verbose=2 build/LiftLink.app
+          minimum_version=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" Info.plist)
+          binary_minimum=$(vtool -show-build build/LiftLink.app/Contents/MacOS/LiftLink | awk '$1 == "minos" { print $2 }')
+          test "$binary_minimum" = "$minimum_version"
+          ditto -c -k --norsrc --keepParent build/LiftLink.app LiftLink.zip
+          unzip -t LiftLink.zip
+
+      - name: Publish pre-release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" LiftLink.zip \
+            --verify-tag --prerelease --latest=false \
+            --title "LiftLink $VERSION" \
+            --notes 'Apple Silicon preview. This build is ad hoc signed and is not notarized.'
+
+      - name: Summarize release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          release_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          download_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/LiftLink.zip"
+          {
+            echo "## LiftLink $VERSION"
+            echo
+            echo '- Built and packaged the Apple Silicon app.'
+            echo '- Verified its signature, minimum macOS version, and ZIP archive.'
+            echo '- Published a GitHub pre-release.'
+            echo
+            echo "[View release]($release_url) · [Download LiftLink.zip]($download_url)"
+            echo
+            echo "Commit: [$GITHUB_SHA]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)"
+            echo
+            echo '> This preview is not notarized. macOS may warn when opening it and may ask for Accessibility access again after an update.'
+          } >> "$GITHUB_STEP_SUMMARY"
