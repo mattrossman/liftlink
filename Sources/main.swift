@@ -336,7 +336,12 @@ final class LiftLink: NSObject, NSApplicationDelegate {
         icon.contentTintColor = success ? .systemGreen : .systemRed
         let bounds = screen.visibleFrame
         panel.setFrameOrigin(NSPoint(x: bounds.maxX - panel.frame.width - 24, y: bounds.minY + 24))
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.35
+            panel.animator().alphaValue = 1
+        }
         toastDismiss?.cancel()
         let dismiss = DispatchWorkItem { [weak panel] in panel?.orderOut(nil) }
         toastDismiss = dismiss

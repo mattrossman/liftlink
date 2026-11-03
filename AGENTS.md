@@ -1,0 +1,2 @@
+- If `AGENTS.local.md` exists in the repository root, read it at the start of the session.
+- After changing app behavior, rebuild and restart LiftLink before testing. Verify the changed behavior in the running app, and say explicitly if that verification is blocked.
