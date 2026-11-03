@@ -167,6 +167,11 @@ final class LiftLink: NSObject, NSApplicationDelegate {
                let url = value as? URL, let scheme = url.scheme, !scheme.isEmpty {
                 return url.absoluteString
             }
+            if (role as? String) == "AXStaticText",
+               AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success,
+               let text = value as? String, let url = standaloneLink(text) {
+                return url
+            }
             var parent: CFTypeRef?
             guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parent) == .success,
                   let parent, CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }

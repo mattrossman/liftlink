@@ -22,3 +22,8 @@ Run the **Release preview** workflow on `main` to publish the next `0.0.x` pre-r
 ```sh
 gh workflow run release.yml --ref main
 ```
+
+## Design goals
+
+- If text looks clickable, LiftLink's shortcut should copy its destination from any app.
+- Prefer standard platform APIs that benefit multiple apps. Reserve app-specific workarounds for widely used apps such as Chrome.
