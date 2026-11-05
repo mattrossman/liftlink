@@ -55,6 +55,11 @@ jobs:
           test "$binary_minimum" = "$minimum_version"
           ditto -c -k --norsrc --keepParent build/LiftLink.app LiftLink.zip
           unzip -t LiftLink.zip
+          mkdir build/dmg
+          cp -R build/LiftLink.app build/dmg/
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname LiftLink -srcfolder build/dmg -format UDZO LiftLink.dmg
+          hdiutil verify LiftLink.dmg
 
       - name: Publish pre-release
         env:
@@ -63,7 +68,7 @@ jobs:
         run: |
           git tag "$TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$TAG"
-          gh release create "$TAG" LiftLink.zip \
+          gh release create "$TAG" LiftLink.zip LiftLink.dmg \
             --verify-tag --prerelease --latest=false \
             --title "LiftLink $VERSION" \
             --notes 'Apple Silicon preview. This build is ad hoc signed and is not notarized.'
@@ -74,15 +79,15 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           release_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
-          download_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/LiftLink.zip"
+          download_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/LiftLink.dmg"
           {
             echo "## LiftLink $VERSION"
             echo
             echo '- Built and packaged the Apple Silicon app.'
-            echo '- Verified its signature, minimum macOS version, and ZIP archive.'
+            echo '- Verified its signature, minimum macOS version, ZIP archive, and disk image.'
             echo '- Published a GitHub pre-release.'
             echo
-            echo "[View release]($release_url) · [Download LiftLink.zip]($download_url)"
+            echo "[View release]($release_url) · [Download LiftLink.dmg]($download_url)"
             echo
             echo "Commit: [$GITHUB_SHA]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)"
             echo

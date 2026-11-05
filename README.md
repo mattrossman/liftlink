@@ -10,9 +10,10 @@ LiftLink is a small Mac app that lets you hold **Control + Option** and click a 
 
 ## Getting started
 
-LiftLink is in early development. Download a [pre-release](https://github.com/mattrossman/liftlink/releases), unzip it, and move LiftLink to Applications. It requires macOS 13 or later on Apple Silicon.
+LiftLink is in early development and requires macOS 13 or later on Apple Silicon.
 
-macOS may warn that it can't verify the app. See [Apple's guide to opening apps safely](https://support.apple.com/102445).
+1. Download a [pre-release](https://github.com/mattrossman/liftlink/releases). Open the DMG and drag LiftLink to Applications. If the release only has a ZIP, unzip it and move LiftLink to Applications.
+2. Open LiftLink from Applications. If macOS blocks it because it can't verify the app, open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**. Confirm the prompt. Only do this if you trust the download. See [Apple's guide to opening apps safely](https://support.apple.com/102445).
 
 LiftLink needs Accessibility access to copy links from other apps. When prompted, enable it in **System Settings → Privacy & Security → Accessibility**, then reopen LiftLink. You may need to allow access again after updating a preview.
 

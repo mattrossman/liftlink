@@ -52,7 +52,7 @@ Apple documentation
 
 ## Pre-releases
 
-Run the **Release preview** workflow on `main` to publish the next `0.0.x` pre-release. The workflow builds an ad hoc-signed Apple Silicon app and attaches a ZIP to the release. It sets the app version for the release; source builds use `0.0.0`. Failed runs can leave a tag, so version numbers may have gaps.
+Run the **Release preview** workflow on `main` to publish the next `0.0.x` pre-release. The workflow builds an ad hoc-signed Apple Silicon app and attaches a DMG and ZIP to the release. It sets the app version for the release; source builds use `0.0.0`. Failed runs can leave a tag, so version numbers may have gaps.
 
 ```sh
 gh workflow run release.yml --ref main
