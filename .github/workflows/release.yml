@@ -66,10 +66,8 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git tag "$TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$TAG"
           gh release create "$TAG" LiftLink.zip LiftLink.dmg \
-            --verify-tag --prerelease --latest=false \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
             --title "LiftLink $VERSION" \
             --notes 'Apple Silicon preview. This build is ad hoc signed and is not notarized.'
 
