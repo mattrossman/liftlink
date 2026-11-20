@@ -4,7 +4,7 @@ Copy a link with a click.
 
 When you're gathering context for an agent or sharing sources with someone, copying links shouldn't slow you down.
 
-LiftLink is a small Mac app that lets you hold **Control + Option** and click a link to copy its address. A toast confirms what you copied, and the menu bar lets you change the shortcut and sound.
+LiftLink is a small Mac app that lets you hold **Control + Option** and click a link to copy its address. Keep holding the shortcut and click more links to copy them together, one per line. Release the shortcut to start a new chain. A toast confirms what you copied, and the menu bar lets you change the shortcut and sound.
 
 <img src="assets/link-copied-toast.png" width="318" alt="LiftLink toast confirming a copied link" />
 

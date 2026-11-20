@@ -63,13 +63,15 @@ final class LiftLink: NSObject, NSApplicationDelegate {
     private var status: NSStatusItem!
     private var tap: CFMachPort?
     private var swallowedDown = false
+    private let linkQueue = DispatchQueue(label: "LiftLink.link", qos: .userInitiated)
+    private var chainID = 0
+    private var copiedChainID = -1
+    private var copiedLinks: [String] = []
     private var messageClear: DispatchWorkItem?
     private var settingsWindow: NSWindow?
-    private var toastWindow: NSPanel?
-    private var toastLabel: NSTextField?
-    private var toastDetail: NSTextField?
-    private var toastIcon: NSImageView?
-    private var toastDismiss: DispatchWorkItem?
+    private var toastWindows: [NSPanel] = []
+    private var toastChainID = -1
+    private var toastShownAt: DispatchTime?
     private var shortcutButton: ShortcutRecorder?
     private var loginButton: NSButton?
     private var loginStatus: NSTextField?
@@ -99,7 +101,7 @@ final class LiftLink: NSObject, NSApplicationDelegate {
             menu.insertItem(NSMenuItem(title: "Enable Accessibility, then restart LiftLink", action: nil, keyEquivalent: ""), at: 0)
             return
         }
-        let mask = (1 << CGEventType.leftMouseDown.rawValue) | (1 << CGEventType.leftMouseUp.rawValue)
+        let mask = (1 << CGEventType.leftMouseDown.rawValue) | (1 << CGEventType.leftMouseUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
         tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: CGEventMask(mask), callback: { _, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
             return Unmanaged<LiftLink>.fromOpaque(refcon).takeUnretainedValue().handle(type, event)
@@ -116,8 +118,14 @@ final class LiftLink: NSObject, NSApplicationDelegate {
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             swallowedDown = false
+            chainID += 1
+            dismissToasts()
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
+        }
+        if type == .flagsChanged && !event.flags.intersection(modifierMask).isSuperset(of: modifiers) {
+            if toastChainID == chainID { dismissToasts() }
+            chainID += 1
         }
         if type == .leftMouseUp && swallowedDown {
             swallowedDown = false
@@ -128,7 +136,8 @@ final class LiftLink: NSObject, NSApplicationDelegate {
         }
         swallowedDown = true
         let point = event.location
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        let clickChainID = chainID
+        linkQueue.async { [weak self] in
             var url = Self.link(at: point)
             for _ in 0..<3 where url == nil {
                 Thread.sleep(forTimeInterval: 0.1)
@@ -137,14 +146,20 @@ final class LiftLink: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let url {
+                    if self.copiedChainID != clickChainID {
+                        self.copiedChainID = clickChainID
+                        self.copiedLinks = []
+                    }
+                    self.copiedLinks.append(url)
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(url, forType: .string)
-                    self.show("Link copied")
-                    self.showToast("Link copied", success: true, detail: destinationLabel(url))
+                    NSPasteboard.general.setString(self.copiedLinks.joined(separator: "\n"), forType: .string)
+                    let message = self.copiedLinks.count == 1 ? "Link copied" : "\(self.copiedLinks.count) links copied"
+                    self.show(message)
+                    self.showToast("Link copied", success: true, detail: destinationLabel(url), chainID: clickChainID)
                     self.playSound()
                 } else {
                     self.show("No link found")
-                    self.showToast("No link found", success: false, detail: "Clipboard unchanged")
+                    self.showToast("No link found", success: false, detail: "Clipboard unchanged", chainID: clickChainID)
                     NSSound.beep()
                 }
             }
@@ -277,75 +292,88 @@ final class LiftLink: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showToast(_ message: String, success: Bool, detail: String) {
-        if toastWindow == nil {
-            let label = NSTextField(labelWithString: message)
-            label.font = .systemFont(ofSize: 14, weight: .medium)
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.hasShadow = true
-            panel.level = .floating
-            panel.ignoresMouseEvents = true
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            let view = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
-            view.material = .popover
-            view.blendingMode = .behindWindow
-            view.state = .active
-            view.wantsLayer = true
-            view.layer?.cornerRadius = 12
-            view.layer?.masksToBounds = true
-            let icon = NSImageView()
-            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-            let detailLabel = NSTextField(labelWithString: "")
-            detailLabel.font = .systemFont(ofSize: 12)
-            detailLabel.textColor = .secondaryLabelColor
-            detailLabel.lineBreakMode = .byTruncatingMiddle
-            detailLabel.maximumNumberOfLines = 1
-            detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            let text = NSStackView(views: [label, detailLabel])
-            text.orientation = .vertical
-            text.alignment = .leading
-            text.spacing = 2
-            text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            let content = NSStackView(views: [icon, text])
-            content.orientation = .horizontal
-            content.alignment = .centerY
-            content.spacing = 10
-            content.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            content.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(content)
-            NSLayoutConstraint.activate([
-                icon.widthAnchor.constraint(equalToConstant: 18),
-                icon.heightAnchor.constraint(equalToConstant: 18),
-                detailLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
-                content.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-                content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-                content.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            ])
-            panel.contentView = view
-            toastLabel = label
-            toastDetail = detailLabel
-            toastIcon = icon
-            toastWindow = panel
+    private func showToast(_ message: String, success: Bool, detail: String, chainID: Int) {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else { return }
+        if toastChainID != chainID {
+            toastWindows.forEach { $0.orderOut(nil) }
+            toastWindows.removeAll()
+            toastChainID = chainID
         }
-        guard let panel = toastWindow, let label = toastLabel, let detailLabel = toastDetail, let icon = toastIcon, let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else { return }
+        if toastWindows.isEmpty { toastShownAt = .now() }
+        let label = NSTextField(labelWithString: message)
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .floating
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        let view = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 12
+        view.layer?.masksToBounds = true
+        let icon = NSImageView()
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+        let detailLabel = NSTextField(labelWithString: "")
+        detailLabel.font = .systemFont(ofSize: 12)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.lineBreakMode = .byTruncatingMiddle
+        detailLabel.maximumNumberOfLines = 1
+        detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let text = NSStackView(views: [label, detailLabel])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 2
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let content = NSStackView(views: [icon, text])
+        content.orientation = .horizontal
+        content.alignment = .centerY
+        content.spacing = 10
+        content.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(content)
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 18),
+            icon.heightAnchor.constraint(equalToConstant: 18),
+            detailLabel.widthAnchor.constraint(equalTo: text.widthAnchor),
+            content.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            content.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        panel.contentView = view
+        toastWindows.append(panel)
         label.stringValue = message
         detailLabel.stringValue = detail
         icon.image = NSImage(systemSymbolName: success ? "checkmark.circle.fill" : "xmark.circle.fill", accessibilityDescription: success ? "Success" : "Failure")
         icon.contentTintColor = success ? .systemGreen : .systemRed
         let bounds = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: bounds.maxX - panel.frame.width - 24, y: bounds.minY + 24))
+        let maxVisible = max(1, Int((bounds.height - 48) / 64))
+        while toastWindows.count > maxVisible { toastWindows.removeFirst().orderOut(nil) }
+        for (index, window) in toastWindows.enumerated() {
+            window.setFrameOrigin(NSPoint(x: bounds.maxX - window.frame.width - 24, y: bounds.minY + 24 + CGFloat(toastWindows.count - 1 - index) * 64))
+        }
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.35
             panel.animator().alphaValue = 1
         }
-        toastDismiss?.cancel()
-        let dismiss = DispatchWorkItem { [weak panel] in panel?.orderOut(nil) }
-        toastDismiss = dismiss
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: dismiss)
+        if chainID != self.chainID { dismissToasts() }
+    }
+
+    private func dismissToasts() {
+        guard let shownAt = toastShownAt else { return }
+        let dismissedChainID = toastChainID
+        DispatchQueue.main.asyncAfter(deadline: max(.now(), shownAt + 2)) { [weak self] in
+            guard let self, self.toastChainID == dismissedChainID, self.chainID != dismissedChainID else { return }
+            self.toastWindows.forEach { $0.orderOut(nil) }
+            self.toastWindows.removeAll()
+            self.toastShownAt = nil
+        }
     }
 
     private func show(_ message: String) {
